@@ -2,6 +2,7 @@
 #include "DTEDsegment.h"
 #include <utility>
 #include <glm/glm.hpp>
+#include <GL/gl.h>
 
 struct pairhash{
 	enum {              
@@ -23,6 +24,12 @@ struct pairhash{
 
 typedef std::hash_map<intpair, DTEDsegment*, pairhash> segmentmap;
 
+const float defaultData[] = {
+	0, 0, -100,
+	1200, 0, -100,
+	1200, 1200, -100,
+	0, 1200, -100
+};
 
 class segmentmanager
 {
@@ -31,8 +38,11 @@ public:
 	segmentmanager(void);
 	~segmentmanager(void);
 
+	GLuint defaultVertexBuffer;
+	GLuint defaultArrayID;
+
 	void loadsegment(std::string filename, bool toGPU = true);
 	void loadrange(int down, int up, int left, int right, std::string path = "",  bool toGPU = true);
-	void drawAll(int LOD, GLuint *indices, GLuint parlocation, glm::vec3 center);
+	void drawAll(int LOD, GLuint *indices, GLuint parlocation, glm::vec3 center, int ylow, int yhigh, int xlow, int xhigh);
 };
 

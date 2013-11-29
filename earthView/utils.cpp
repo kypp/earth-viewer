@@ -54,3 +54,22 @@ std::string tostr<T>(T data)
 	conv << data;
 	return conv.str();
 }
+
+
+glm::vec3 geotocart( float lat, float lon, float radius )
+{
+	float PI = 3.14159265358979323846264;
+	lat *= PI/180.0f;
+	lon *= PI/180.0f;
+	//return radius*vec3(cos(lon) * cos(lat), cos(lon) * sin(lat), sin(lon));
+	return radius*glm::vec3(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat));
+}
+
+glm::vec2 carttogeo(glm::vec3 cart)
+{
+	float PI = 3.14159265358979323846264;
+	glm::vec2 res;
+	res.x = asin(cart.z);
+	res.y = asin(cart.y/sqrt(1-cart.z*cart.z));
+	return res * 180.0f / PI;
+}

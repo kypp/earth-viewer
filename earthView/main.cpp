@@ -4,36 +4,40 @@
 #include <GL/glfw.h>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/virtrev/xstream.hpp>
 #include <glm/gtx/transform.hpp>
 #include "shader.hpp"
+#include "texture.hpp"
 #include "utils.h"
 #include "segmentmanager.h"
 #include <iostream>
 #include <string>
 #include <sstream>
 #include <ostream>
+#include "Sphere.cpp"
 
 using namespace glm;
 using namespace std;
 
-GLuint program, program2, program3;
+GLuint program, program2, sphereprogram;
 GLuint vertexbuffer;
 bool earth = true;
 bool automat = false;
 
 vec3 center;
 
-segmentmanager Segments;
+segmentmanager *Segments;
 
 GLuint *indices;
 
-GLuint parlocation, segparlocation, MatrixID, segparlocation2, MatrixID2, MatrixID3;
+GLuint parlocation, segparlocation, MatrixID, segparlocation2, MatrixID2, MatrixID3, TextureID, Texture, MatrixIDsphere, 
+	SphereTextureID, TexGradID, ModelIDsphere, ViewIDsphere, LightIDsphere, NightTexture, NightTextureID, NightTextureID2, 
+	ModelIDsphere2, ViewIDsphere2, LightIDsphere2;
 int LOD = 4;
-
-//mat4 MVP;
+const int earthEastID = 0;
 
 double calcFPS(double theTimeInterval = 1.0, std::string theWindowTitle = "NONE");
-vec3 geotocart(float lat, float lon, float radius);
+GLuint loadImage(const char* theFileName, GLenum minFilter, GLenum magFilter, GLenum wrapFilter);
 
 void initialize()
 {
@@ -45,6 +49,7 @@ void initialize()
 	glfwOpenWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
 	glewExperimental = GL_TRUE;
 	
+	
 	glfwOpenWindow( 1920, 1080, 0,0,0,0, 32,0, GLFW_FULLSCREEN );
 	
 	glewInit();
@@ -53,12 +58,22 @@ void initialize()
 	
 	glfwEnable( GLFW_STICKY_KEYS );
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_TEXTURE_2D);
 	glDepthFunc(GL_LESS);
 
 	glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
-	
-	program = LoadShaders( "VertexShader.vert", "FragmentShader.frag");
-	program2 = LoadShaders( "VertexShader2.vert", "FragmentShader.frag");
+		
+	program = LoadShaders( "VertexShaderEV.vert", "FragmentShaderEV.frag");
+	program2 = LoadShaders( "VertexShader2EV.vert", "FragmentShaderEV.frag");
+	sphereprogram = LoadShaders( "SphereShaderEV.vert", "FragmentShaderEV.frag");
+
+	Texture = loadBMP_custom("images\\land_shallow_topo_8192.bmp");
+	TextureID  = glGetUniformLocation(program2, "eastSampler");
+	SphereTextureID  = glGetUniformLocation(sphereprogram, "eastSampler");
+
+	NightTexture = loadBMP_custom("images\\land_ocean_lights_8192.bmp");
+	NightTextureID = glGetUniformLocation(sphereprogram, "nightSampler");
+	NightTextureID2 = glGetUniformLocation(program2, "nightSampler");
 }
 
 void movemap()
@@ -119,40 +134,51 @@ void movemap()
 }
 
 
-void flightkeymap()
-{
-
-
-}
-
 void loop() 
-{	
+{		
+	static float k = 0.0f;
+	if (glfwGetKey('V')) 
+		k+=1;
+	if (glfwGetKey('B')) 
+		k-=1;
+	vec3 Light = geotocart(0,k,150000000);
+
 	static vec3 position = geotocart(49, 16, 6600);
 	static vec3 angles = -normalize(position);//-normalize(position);
 	
-	static float velocity = 0.1f;
+	static float velocity = 1.0f;
 	static float pitch = 0, yaw = 0;
 
 
 	if (glfwGetKey('Z'))
-		velocity += 0.01;
+		velocity += 50;
 	if (glfwGetKey('X'))
-		velocity -= 0.01;
+		velocity -= 50;
 
 	float fact = 0.2f;
 	
-	if (glfwGetKey('A')) {		
+	if (glfwGetKey('W')) {		
 		pitch+=fact;	
 	}
-	if (glfwGetKey('D')) {
+	if (glfwGetKey('S')) {
 		pitch-=fact;
 	}
-	if (glfwGetKey('W')) {
+	if (glfwGetKey('D')) {
 		yaw+=fact;
 	}
-	if (glfwGetKey('S')) {
+	if (glfwGetKey('A')) {
 		yaw-=fact;
 	}
+
+	static float texgrad = 1.0f;
+
+	if (glfwGetKey('T'))
+		texgrad += 0.01f;
+	if (glfwGetKey('G'))
+		texgrad -= 0.01f;
+
+	texgrad = texgrad>1.0f?1.0f:texgrad;
+	texgrad = texgrad<0.0f?0.0f:texgrad;
 
 	mat4 rot = mat4(1.0f);
 	rot = rotate(rot, pitch, vec3(0,1.0f,0));
@@ -168,55 +194,75 @@ void loop()
 
 
 	position += velocity*normalize(direction);
-	
 
-	mat4 Projection = glm::perspective(60.0f, 16.0f/9.0f, 0.1f, 10000.f);
+	mat4 Projection = glm::perspective(60.0f, 16.0f/9.0f, 1.0f, 20000.f);
 
+	position = geotocart(49+pitch, 16+yaw, 6600+velocity);
 	mat4 View = lookAt(
 	position,
-	position+direction,
-	up);
+	vec3(0),
+	vec3(0,0,1)		
+		);
 
 	
-	mat4 Model      = glm::mat4(1.0f);  // Changes for each model !
-	// Our ModelViewProjection : multiplication of our 3 matrices
-	//Model = scale(Model, vec3(1, 1, 1));
-	//Model = rotate(Model, x, vec3(1,0,0));
-
+	mat4 Model      = glm::mat4(1.0f);  
 
 	mat4 MVP = Projection * View * Model;
 
 
+	glUseProgram(earth? program2 : program);
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, Texture);
+	glUniform1i(TextureID, 0);
+	
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, NightTexture);
+	glUniform1i(NightTextureID2, 1);
 
 	glUniformMatrix4fv(earth ? MatrixID2 : MatrixID, 1, GL_FALSE, &MVP[0][0]);
-	glUniformMatrix4fv(MatrixID3, 1, GL_FALSE, &MVP[0][0]);
+	glUniformMatrix4fv(ModelIDsphere2, 1, GL_FALSE, &Model[0][0]);
+	glUniformMatrix4fv(ViewIDsphere2, 1, GL_FALSE, &View[0][0]);
+	glUniform3f(LightIDsphere2, Light.x, Light.y, Light.z);	
+	glUniform1f(TexGradID, texgrad);
 
 	movemap();
 
 	glClear( GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT );
+	
+	vec2 geoPos = carttogeo(normalize(position));
+	int c = 20;
+	
 
-	//program = LoadShaders( "VertexShader.vert", "FragmentShader.frag");	
-	/*if (earth) {
+	Segments->drawAll(LOD, indices, earth? segparlocation2 : segparlocation, center, geoPos.y-c, geoPos.y+c, geoPos.x-c, geoPos.x+c);	
 
-		glUseProgram(program3);
-		glEnableVertexAttribArray(0);
-		glBindBuffer(GL_ARRAY_BUFFER, vertexbuffer);
-		glVertexAttribPointer(
-			0,                  
-			3,                  // size
-			GL_FLOAT,			// type
-			GL_FALSE,           // normalized?
-			0,                  // stride
-			(void*)0            // array buffer offset
-			);
-
-		glDrawArrays(GL_LINE_STRIP, 0, 72);
-	}*/
+	static Sphere sphere(6371, 50, 50);
+	
+	static float angx = -270.0f;
+	static float angy = 180.0f;
+	static float angz = 180.0f;
+	Model = scale(mat4(1.0f), vec3(-1.0f, -1.0f, -1.0f));
+	Model = rotate(Model, angx, 1.0f, 0.0f, 0.0f);
+	Model = rotate(Model, angy, 0.0f, 1.0f, 0.0f);
+	Model = rotate(Model, angz, 0.0f, 0.0f, 1.0f);
+	MVP = Projection * View * Model;
 
 
-	glUseProgram(earth? program2 : program);
+	glUseProgram(sphereprogram);
+	glUniformMatrix4fv(MatrixIDsphere, 1, GL_FALSE, &MVP[0][0]);
+	glUniformMatrix4fv(ModelIDsphere, 1, GL_FALSE, &Model[0][0]);
+	glUniformMatrix4fv(ViewIDsphere, 1, GL_FALSE, &View[0][0]);
+	glUniform3f(LightIDsphere, Light.x, Light.y, Light.z);	
 
-	Segments.drawAll(LOD, indices, earth? segparlocation2 : segparlocation, center);	
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, Texture);
+	glUniform1i(SphereTextureID, 0);
+
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, NightTexture);
+	glUniform1i(NightTextureID, 1);
+
+	sphere.draw(0,0,0);
 
 	glfwSwapBuffers();
 }
@@ -225,7 +271,9 @@ int main()
 {
 	initialize();
 
-	Segments.loadrange(40, 60, 10, 50, "C:\\Users\\kyp10_000\\Downloads\\");
+	Segments = new segmentmanager();
+
+	Segments->loadrange(-90, 90, -180, 180, "images\\");
 
 	center.x = 49;
 	center.y = 16;
@@ -243,9 +291,17 @@ int main()
 	glUseProgramObjectARB(program2);
 	segparlocation2 = glGetUniformLocationARB(program2, "segment");
 	MatrixID2 = glGetUniformLocation(program2, "MVP");	
+	TextureID  = glGetUniformLocation(program2, "eastSampler");
+	TexGradID = glGetUniformLocation(program2, "texgrad");
+	ModelIDsphere2 = glGetUniformLocation(program2, "M");
+	ViewIDsphere2 = glGetUniformLocation(program2, "V");	
+	LightIDsphere2 = glGetUniformLocation(program2, "LightPosition_worldspace");
 
-	glUseProgramObjectARB(program3);
-	MatrixID3 = glGetUniformLocation(program3, "MVP");	
+	glUseProgramObjectARB(sphereprogram);
+	MatrixIDsphere = glGetUniformLocation(sphereprogram, "MVP");
+	ModelIDsphere = glGetUniformLocation(sphereprogram, "M");
+	ViewIDsphere = glGetUniformLocation(sphereprogram, "V");	
+	LightIDsphere = glGetUniformLocation(sphereprogram, "LightPosition_worldspace");
 
 	GLuint VertexArrayID;
 
@@ -258,6 +314,7 @@ int main()
 	glfwTerminate();
 
 	delete [] indices;
+	delete Segments;
 
 	return 0;
 }
@@ -319,13 +376,4 @@ double calcFPS(double theTimeInterval, std::string theWindowTitle)
 
 	// Return the current FPS - doesn't have to be used if you don't want it!
 	return fps;
-}
-
-glm::vec3 geotocart( float lat, float lon, float radius )
-{
-	float PI = 3.14159265358979323846264;
-	lat *= PI/180.0f;
-	lon *= PI/180.0f;
-	//return radius*vec3(cos(lon) * cos(lat), cos(lon) * sin(lat), sin(lon));
-	return radius*vec3(cos(lat) * cos(lon), cos(lat) * sin(lon), sin(lat));
 }

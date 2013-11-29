@@ -1,0 +1,50 @@
+
+	static float lastTime = 0;
+	double currentTime = glfwGetTime();
+	float deltaTime = float(currentTime - lastTime);
+	lastTime = deltaTime;
+
+	static vec3 position = geotocart(49, 16, 6600);
+	// Initial Field of View
+	float initialFoV = 45.0f;
+
+	float speed = 0.1f;
+	float mouseSpeed = 0.005f;
+
+	int xpos, ypos;
+	glfwGetMousePos(&xpos, &ypos);
+
+	glm::vec3 direction = -normalize(position);
+
+	glm::vec3 right = glm::vec3(1.0f);
+
+	glm::vec3 up = glm::cross( right, direction );
+
+	// Move forward
+	if (glfwGetKey( 'W' ) == GLFW_PRESS){
+		position += direction * deltaTime * speed;
+	}
+	// Move backward
+	if (glfwGetKey( 'S' ) == GLFW_PRESS){
+		position -= direction * deltaTime * speed;
+	}
+	// Strafe right
+	if (glfwGetKey( 'D' ) == GLFW_PRESS){
+		position += right * deltaTime * speed;
+	}
+	// Strafe left
+	if (glfwGetKey( 'A' ) == GLFW_PRESS){
+		position -= right * deltaTime * speed;
+	}
+
+	float FoV = initialFoV - 5 * glfwGetMouseWheel();
+
+	// Projection matrix : 45° Field of View, 4:3 ratio, display range : 0.1 unit <-> 100 units
+	mat4 Projection = glm::perspective(FoV, 16.0f / 9.0f, 0.1f, 100.0f);
+	// Camera matrix
+	mat4 View       = glm::lookAt(
+		position,           // Camera is here
+		position+direction, // and looks here : at the same position, plus "direction"
+		up                  // Head is up (set to 0,-1,0 to look upside-down)
+		);
+	/*
